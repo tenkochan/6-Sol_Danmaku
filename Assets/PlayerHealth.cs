@@ -43,6 +43,7 @@ public sealed class PlayerHealth : MonoBehaviour
     private IEnumerator GameOverAfterEffect()
     {
         yield return new WaitForSeconds(DeathPieces.Duration);
+        movement.PlayCamera.GetComponent<BulletSpawner>().StopSurvivalTimer();
         Time.timeScale = 0f;
         lifeDisplay.ShowGameOver();
     }

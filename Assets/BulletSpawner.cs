@@ -5,37 +5,81 @@ using UnityEngine;
 public sealed class BulletSpawner : MonoBehaviour
 {
     public int ActiveCount => bullets.Count;
+    public float SurvivalTime { get; private set; }
     public event Action<int> CountChanged;
+    public event Action<float> SurvivalTimeChanged;
 
     [SerializeField] private PlayerMovement playerMovement;
     [SerializeField] private Sprite bulletSprite;
-    [SerializeField] private float spawnInterval = 0.3f;
+    [SerializeField, Min(0.01f)] private float startBulletsPerSecond = 2f;
+    [SerializeField, Min(0.01f)] private float maxBulletsPerSecond = 20f;
+    [SerializeField, Min(0.01f)] private float secondsToMaxRate = 60f;
 
     private const int MaxBullets = 100;
+    private const float BulletScale = 0.35f;
     private readonly HashSet<TestBullet> bullets = new HashSet<TestBullet>();
+    private readonly Queue<TestBullet> availableBullets = new Queue<TestBullet>();
     private Camera playCamera;
-    private float elapsed;
+    private float spawnCredit;
+    private bool timerStopped;
 
-    private void Awake() => playCamera = GetComponent<Camera>();
+    private void Awake()
+    {
+        playCamera = GetComponent<Camera>();
+        GameObject poolRoot = new GameObject("Enemy Bullet Pool");
+        for (int i = 0; i < MaxBullets; i++)
+        {
+            GameObject bulletObject = new GameObject("Enemy Bullet");
+            bulletObject.SetActive(false);
+            bulletObject.transform.SetParent(poolRoot.transform);
+            bulletObject.transform.localScale = new Vector3(BulletScale, BulletScale, 1f);
+            SpriteRenderer renderer = bulletObject.AddComponent<SpriteRenderer>();
+            renderer.sprite = bulletSprite;
+            renderer.color = new Color(1f, 0.25f, 0.25f);
+            CircleCollider2D collider = bulletObject.AddComponent<CircleCollider2D>();
+            collider.isTrigger = true;
+            availableBullets.Enqueue(bulletObject.AddComponent<TestBullet>());
+        }
+    }
 
     private void Update()
     {
-        elapsed += Time.deltaTime;
-        if (elapsed < spawnInterval)
+        if (timerStopped)
             return;
 
-        elapsed = 0f;
-        if (bullets.Count < MaxBullets)
+        SurvivalTime += Time.deltaTime;
+        SurvivalTimeChanged?.Invoke(SurvivalTime);
+
+        float startRate = Mathf.Max(0.01f, startBulletsPerSecond);
+        float maxRate = Mathf.Max(startRate, maxBulletsPerSecond);
+        float progress = Mathf.Clamp01(SurvivalTime / Mathf.Max(0.01f, secondsToMaxRate));
+        float currentRate = Mathf.Lerp(startRate, maxRate, progress);
+
+        if (bullets.Count >= MaxBullets)
+        {
+            spawnCredit = 0f;
+            return;
+        }
+
+        spawnCredit += Time.deltaTime * currentRate;
+        while (spawnCredit >= 1f && bullets.Count < MaxBullets)
+        {
             Spawn();
+            spawnCredit -= 1f;
+        }
+
+        if (bullets.Count >= MaxBullets)
+            spawnCredit = 0f;
     }
+
+    public void StopSurvivalTimer() => timerStopped = true;
 
     private void Spawn()
     {
-        const float scale = 0.35f;
         const float margin = 0.02f;
         float depth = playCamera.WorldToViewportPoint(playerMovement.transform.position).z;
-        float halfWidth = bulletSprite.bounds.extents.x * scale / (2f * playCamera.orthographicSize * playCamera.aspect);
-        float halfHeight = bulletSprite.bounds.extents.y * scale / (2f * playCamera.orthographicSize);
+        float halfWidth = bulletSprite.bounds.extents.x * BulletScale / (2f * playCamera.orthographicSize * playCamera.aspect);
+        float halfHeight = bulletSprite.bounds.extents.y * BulletScale / (2f * playCamera.orthographicSize);
         Vector2 start;
         Vector2 target;
         float edgePosition = UnityEngine.Random.value;
@@ -61,24 +105,21 @@ public sealed class BulletSpawner : MonoBehaviour
         Vector3 direction = (worldTarget - worldStart).normalized;
         float speed = UnityEngine.Random.Range(playerMovement.SlowSpeed, playerMovement.NormalSpeed * 2f);
 
-        GameObject bulletObject = new GameObject("Enemy Bullet", typeof(SpriteRenderer), typeof(CircleCollider2D));
-        bulletObject.transform.position = worldStart;
-        bulletObject.transform.localScale = new Vector3(scale, scale, 1f);
-        SpriteRenderer renderer = bulletObject.GetComponent<SpriteRenderer>();
-        renderer.sprite = bulletSprite;
-        renderer.color = new Color(1f, 0.25f, 0.25f);
-        CircleCollider2D collider = bulletObject.GetComponent<CircleCollider2D>();
-        collider.isTrigger = true;
-        TestBullet bullet = bulletObject.AddComponent<TestBullet>();
+        TestBullet bullet = availableBullets.Dequeue();
+        bullet.transform.position = worldStart;
         bullet.Initialize(this, playCamera, direction, speed);
-
         bullets.Add(bullet);
+        bullet.gameObject.SetActive(true);
         CountChanged?.Invoke(bullets.Count);
     }
 
-    public void NotifyRemoved(TestBullet bullet)
+    public void ReturnBullet(TestBullet bullet)
     {
         if (bullets.Remove(bullet))
+        {
+            bullet.ResetForPool();
+            availableBullets.Enqueue(bullet);
             CountChanged?.Invoke(bullets.Count);
+        }
     }
 }

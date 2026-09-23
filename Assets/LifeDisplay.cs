@@ -10,6 +10,7 @@ public sealed class LifeDisplay : MonoBehaviour
     private PlayerHealth health;
     private BulletSpawner bulletSpawner;
     private UnityEngine.UI.Text bulletCountText;
+    private UnityEngine.UI.Text survivalTimeText;
     private GameObject gameOverPanel;
 
     private void Awake()
@@ -63,19 +64,31 @@ public sealed class LifeDisplay : MonoBehaviour
         counterRect.anchoredPosition = new Vector2(-24f, -24f);
         bulletCountText.alignment = TextAnchor.UpperRight;
         RefreshBulletCount(bulletSpawner.ActiveCount);
+
+        survivalTimeText = CreateText("TIME 00:00.0", canvasObject.transform, counterFont, 36,
+            Vector2.zero, new Vector2(320f, 50f));
+        RectTransform timeRect = survivalTimeText.rectTransform;
+        timeRect.anchorMin = timeRect.anchorMax = new Vector2(0.5f, 1f);
+        timeRect.pivot = new Vector2(0.5f, 1f);
+        timeRect.anchoredPosition = new Vector2(0f, -24f);
+        RefreshSurvivalTime(bulletSpawner.SurvivalTime);
+
         CreateGameOverPanel(canvasObject.transform);
+        timeRect.SetAsLastSibling();
     }
 
     private void OnEnable()
     {
         health.LivesChanged += Refresh;
         bulletSpawner.CountChanged += RefreshBulletCount;
+        bulletSpawner.SurvivalTimeChanged += RefreshSurvivalTime;
     }
 
     private void OnDisable()
     {
         health.LivesChanged -= Refresh;
         bulletSpawner.CountChanged -= RefreshBulletCount;
+        bulletSpawner.SurvivalTimeChanged -= RefreshSurvivalTime;
     }
 
     private void Refresh(int lives)
@@ -85,6 +98,14 @@ public sealed class LifeDisplay : MonoBehaviour
     }
 
     private void RefreshBulletCount(int count) => bulletCountText.text = count.ToString();
+
+    private void RefreshSurvivalTime(float elapsedSeconds)
+    {
+        int tenths = Mathf.FloorToInt(elapsedSeconds * 10f);
+        int minutes = tenths / 600;
+        int seconds = tenths / 10 % 60;
+        survivalTimeText.text = $"TIME {minutes:00}:{seconds:00}.{tenths % 10}";
+    }
 
     private void CreateGameOverPanel(Transform parent)
     {

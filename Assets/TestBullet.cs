@@ -15,6 +15,7 @@ public sealed class TestBullet : MonoBehaviour
         playCamera = camera;
         direction = moveDirection;
         speed = moveSpeed;
+        enteredViewport = false;
         spriteRenderer = GetComponent<SpriteRenderer>();
     }
 
@@ -30,7 +31,7 @@ public sealed class TestBullet : MonoBehaviour
         if (visible)
             enteredViewport = true;
         else if (enteredViewport)
-            Destroy(gameObject);
+            spawner.ReturnBullet(this);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -40,12 +41,16 @@ public sealed class TestBullet : MonoBehaviour
             return;
 
         player.TakeHit();
-        Destroy(gameObject);
+        spawner.ReturnBullet(this);
     }
 
-    private void OnDestroy()
+    public void ResetForPool()
     {
-        if (spawner != null)
-            spawner.NotifyRemoved(this);
+        gameObject.SetActive(false);
+        transform.position = Vector3.zero;
+        playCamera = null;
+        direction = Vector3.zero;
+        speed = 0f;
+        enteredViewport = false;
     }
 }
