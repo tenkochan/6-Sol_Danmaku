@@ -9,7 +9,11 @@ public sealed class PlayerHealth : MonoBehaviour
     public static PlayMode SelectedMode { get; set; } = PlayMode.Human;
     public PlayMode Mode => playMode;
     public int CurrentLives { get; private set; } = MaxLives;
+    public bool IsRespawning => respawning && CurrentLives > 0;
+    public bool IsInvincible => invulnerable;
+    public float RemainingRespawnTime { get; private set; }
     public event System.Action<int> LivesChanged;
+    public event System.Action Hit;
 
     [SerializeField] private PlayMode playMode = PlayMode.Human;
 
@@ -17,6 +21,8 @@ public sealed class PlayerHealth : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private LifeDisplay lifeDisplay;
     private bool respawning;
+    private bool invulnerable;
+    private bool hitProcessing;
     private bool recordSaved;
     private string startedAtIso8601;
     private readonly float[] lifeLossTimes = { -1f, -1f, -1f };
@@ -37,20 +43,33 @@ public sealed class PlayerHealth : MonoBehaviour
 
     public void TakeHit()
     {
-        if (respawning || CurrentLives == 0)
+        if (CurrentLives == 0 || invulnerable || respawning || hitProcessing)
+        {
+            if (playMode == PlayMode.Bot)
+                Debug.Log($"PlayerHealth TakeHit blocked at {DateTimeOffset.Now:HH:mm:ss.fff}, frame {Time.frameCount}, lives {CurrentLives} -> {CurrentLives}, invulnerable={invulnerable}, respawning={respawning}, hitProcessing={hitProcessing}.");
             return;
+        }
 
+        hitProcessing = true;
+        invulnerable = true;
+        int livesBefore = CurrentLives;
+        string hitTime = DateTimeOffset.Now.ToString("HH:mm:ss.fff");
+        respawning = true;
+        movement.CanMove = false;
         CurrentLives--;
+        if (playMode == PlayMode.Bot)
+            Debug.Log($"PlayerHealth TakeHit accepted at {hitTime}, frame {Time.frameCount}, lives {livesBefore} -> {CurrentLives}, invulnerable={invulnerable}.");
         lifeLossTimes[MaxLives - CurrentLives - 1] = bulletSpawner.SurvivalTime;
         LivesChanged?.Invoke(CurrentLives);
-        movement.CanMove = false;
-        respawning = true;
+        RemainingRespawnTime = CurrentLives > 0 ? 1f : 0f;
+        Hit?.Invoke();
         DeathPieces.Create(spriteRenderer);
 
         if (CurrentLives > 0)
             StartCoroutine(Respawn());
         else
             FinishGame(true, "GameOver");
+        hitProcessing = false;
     }
 
     public void EndForApiError()
@@ -59,10 +78,12 @@ public sealed class PlayerHealth : MonoBehaviour
             return;
 
         StopAllCoroutines();
+        invulnerable = true;
+        respawning = true;
+        movement.CanMove = false;
         CurrentLives = 0;
         LivesChanged?.Invoke(CurrentLives);
-        movement.CanMove = false;
-        respawning = true;
+        RemainingRespawnTime = 0f;
         DeathPieces.Create(spriteRenderer);
         FinishGame(false, "JevApiError");
     }
@@ -120,14 +141,26 @@ public sealed class PlayerHealth : MonoBehaviour
         while (elapsed < duration)
         {
             elapsed = Mathf.Min(elapsed + Time.deltaTime, duration);
+            RemainingRespawnTime = duration - elapsed;
             float y = Mathf.Lerp(startY, endY, elapsed / duration);
             transform.position = camera.ViewportToWorldPoint(new Vector3(0.5f, y, depth));
             spriteRenderer.enabled = Mathf.FloorToInt(elapsed * 10f) % 2 == 0;
             yield return null;
         }
 
-        spriteRenderer.enabled = true;
-        movement.CanMove = true;
+        RemainingRespawnTime = 0f;
         respawning = false;
+        movement.CanMove = true;
+
+        float protectionStartedAt = Time.time;
+        while (Time.time - protectionStartedAt < duration)
+        {
+            float protectedElapsed = Time.time - protectionStartedAt;
+            spriteRenderer.enabled = Mathf.FloorToInt((duration + protectedElapsed) * 10f) % 2 == 0;
+            yield return null;
+        }
+
+        spriteRenderer.enabled = true;
+        invulnerable = false;
     }
 }

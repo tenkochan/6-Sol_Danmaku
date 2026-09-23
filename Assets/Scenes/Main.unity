@@ -274,6 +274,7 @@ MonoBehaviour:
   startBulletsPerSecond: 2
   maxBulletsPerSecond: 20
   secondsToMaxRate: 60
+  randomSeed: 12345
 --- !u!1 &619394800
 GameObject:
   m_ObjectHideFlags: 0

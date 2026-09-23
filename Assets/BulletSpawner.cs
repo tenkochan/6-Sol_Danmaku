@@ -15,6 +15,7 @@ public sealed class BulletSpawner : MonoBehaviour
     [SerializeField, Min(0.01f)] private float startBulletsPerSecond = 2f;
     [SerializeField, Min(0.01f)] private float maxBulletsPerSecond = 20f;
     [SerializeField, Min(0.01f)] private float secondsToMaxRate = 60f;
+    [SerializeField] private int randomSeed = 12345;
 
     private const int MaxBullets = 100;
     private const float BulletScale = 0.35f;
@@ -23,10 +24,12 @@ public sealed class BulletSpawner : MonoBehaviour
     private Camera playCamera;
     private float spawnCredit;
     private bool timerStopped;
+    private System.Random random;
 
     private void Awake()
     {
         playCamera = GetComponent<Camera>();
+        random = new System.Random(randomSeed);
         GameObject poolRoot = new GameObject("Enemy Bullet Pool");
         for (int i = 0; i < MaxBullets; i++)
         {
@@ -83,28 +86,28 @@ public sealed class BulletSpawner : MonoBehaviour
         float halfHeight = bulletSprite.bounds.extents.y * BulletScale / (2f * playCamera.orthographicSize);
         Vector2 start;
         Vector2 target;
-        float edgePosition = UnityEngine.Random.value;
+        float edgePosition = (float)random.NextDouble();
 
-        switch (UnityEngine.Random.Range(0, 3))
+        switch (random.Next(0, 3))
         {
             case 0: // Top
                 start = new Vector2(edgePosition, 1f + halfHeight + margin);
-                target = new Vector2(Mathf.Clamp01(edgePosition + UnityEngine.Random.Range(-0.25f, 0.25f)), 0.5f);
+                target = new Vector2(Mathf.Clamp01(edgePosition + RandomRange(-0.25f, 0.25f)), 0.5f);
                 break;
             case 1: // Left
                 start = new Vector2(-halfWidth - margin, edgePosition);
-                target = new Vector2(0.5f, Mathf.Clamp01(edgePosition + UnityEngine.Random.Range(-0.25f, 0.25f)));
+                target = new Vector2(0.5f, Mathf.Clamp01(edgePosition + RandomRange(-0.25f, 0.25f)));
                 break;
             default: // Right
                 start = new Vector2(1f + halfWidth + margin, edgePosition);
-                target = new Vector2(0.5f, Mathf.Clamp01(edgePosition + UnityEngine.Random.Range(-0.25f, 0.25f)));
+                target = new Vector2(0.5f, Mathf.Clamp01(edgePosition + RandomRange(-0.25f, 0.25f)));
                 break;
         }
 
         Vector3 worldStart = playCamera.ViewportToWorldPoint(new Vector3(start.x, start.y, depth));
         Vector3 worldTarget = playCamera.ViewportToWorldPoint(new Vector3(target.x, target.y, depth));
         Vector3 direction = (worldTarget - worldStart).normalized;
-        float speed = UnityEngine.Random.Range(playerMovement.SlowSpeed, playerMovement.NormalSpeed * 2f);
+        float speed = RandomRange(playerMovement.SlowSpeed, playerMovement.NormalSpeed * 2f);
 
         TestBullet bullet = availableBullets.Dequeue();
         bullet.transform.position = worldStart;
@@ -115,6 +118,8 @@ public sealed class BulletSpawner : MonoBehaviour
             MaxActiveBullets = bullets.Count;
         CountChanged?.Invoke(bullets.Count);
     }
+
+    private float RandomRange(float min, float max) => min + (float)random.NextDouble() * (max - min);
 
     public void ReturnBullet(TestBullet bullet)
     {

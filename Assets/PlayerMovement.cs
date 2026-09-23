@@ -9,6 +9,7 @@ public sealed class PlayerMovement : MonoBehaviour
     public float SlowSpeed => moveSpeed * 0.4f;
     public bool UseBotInput { get; set; }
     public Vector2 BotDirection { get; set; }
+    public float BotInputExpiresAt { get; set; }
 
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private Camera playCamera;
@@ -29,9 +30,12 @@ public sealed class PlayerMovement : MonoBehaviour
 
         Vector2 direction;
         float speed;
+        float moveDeltaTime = Time.deltaTime;
         if (UseBotInput)
         {
-            direction = BotDirection.normalized;
+            float remainingInputTime = BotInputExpiresAt - Time.realtimeSinceStartup;
+            direction = remainingInputTime > 0f ? BotDirection.normalized : Vector2.zero;
+            moveDeltaTime = Mathf.Min(moveDeltaTime, Mathf.Max(0f, remainingInputTime));
             speed = NormalSpeed;
         }
         else
@@ -47,7 +51,7 @@ public sealed class PlayerMovement : MonoBehaviour
             direction = new Vector2(x, y).normalized;
             speed = keyboard.leftShiftKey.isPressed ? SlowSpeed : NormalSpeed;
         }
-        Vector3 position = transform.position + (Vector3)(direction * speed * Time.deltaTime);
+        Vector3 position = transform.position + (Vector3)(direction * speed * moveDeltaTime);
 
         Bounds bounds = spriteRenderer.bounds;
         Vector3 center = playCamera.WorldToViewportPoint(position);
