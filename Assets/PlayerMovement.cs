@@ -5,6 +5,8 @@ public sealed class PlayerMovement : MonoBehaviour
 {
     public bool CanMove { get; set; } = true;
     public Camera PlayCamera => playCamera;
+    public float NormalSpeed => moveSpeed;
+    public float SlowSpeed => moveSpeed * 0.4f;
 
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private Camera playCamera;
@@ -30,7 +32,7 @@ public sealed class PlayerMovement : MonoBehaviour
                 - (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
 
         Vector2 direction = new Vector2(x, y).normalized;
-        float speed = keyboard.leftShiftKey.isPressed ? moveSpeed * 0.4f : moveSpeed;
+        float speed = keyboard.leftShiftKey.isPressed ? SlowSpeed : NormalSpeed;
         Vector3 position = transform.position + (Vector3)(direction * speed * Time.deltaTime);
 
         Bounds bounds = spriteRenderer.bounds;

@@ -20,9 +20,9 @@ public sealed class PlayerHealth : MonoBehaviour
         lifeDisplay = GetComponent<LifeDisplay>();
     }
 
-    private void OnTriggerEnter2D(Collider2D other)
+    public void TakeHit()
     {
-        if (respawning || CurrentLives == 0 || other.GetComponent<TestBullet>() == null)
+        if (respawning || CurrentLives == 0)
             return;
 
         CurrentLives--;

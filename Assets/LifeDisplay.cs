@@ -8,11 +8,14 @@ public sealed class LifeDisplay : MonoBehaviour
 
     private readonly UnityEngine.UI.Image[] slots = new UnityEngine.UI.Image[PlayerHealth.MaxLives];
     private PlayerHealth health;
+    private BulletSpawner bulletSpawner;
+    private UnityEngine.UI.Text bulletCountText;
     private GameObject gameOverPanel;
 
     private void Awake()
     {
         health = GetComponent<PlayerHealth>();
+        bulletSpawner = GetComponent<PlayerMovement>().PlayCamera.GetComponent<BulletSpawner>();
 
         GameObject canvasObject = new GameObject("Game UI", typeof(RectTransform), typeof(Canvas),
             typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
@@ -51,17 +54,37 @@ public sealed class LifeDisplay : MonoBehaviour
         }
 
         Refresh(health.CurrentLives);
+        Font counterFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        bulletCountText = CreateText("0", canvasObject.transform, counterFont, 36,
+            Vector2.zero, new Vector2(180f, 50f));
+        RectTransform counterRect = bulletCountText.rectTransform;
+        counterRect.anchorMin = counterRect.anchorMax = Vector2.one;
+        counterRect.pivot = Vector2.one;
+        counterRect.anchoredPosition = new Vector2(-24f, -24f);
+        bulletCountText.alignment = TextAnchor.UpperRight;
+        RefreshBulletCount(bulletSpawner.ActiveCount);
         CreateGameOverPanel(canvasObject.transform);
     }
 
-    private void OnEnable() => health.LivesChanged += Refresh;
-    private void OnDisable() => health.LivesChanged -= Refresh;
+    private void OnEnable()
+    {
+        health.LivesChanged += Refresh;
+        bulletSpawner.CountChanged += RefreshBulletCount;
+    }
+
+    private void OnDisable()
+    {
+        health.LivesChanged -= Refresh;
+        bulletSpawner.CountChanged -= RefreshBulletCount;
+    }
 
     private void Refresh(int lives)
     {
         for (int i = 0; i < slots.Length; i++)
             slots[i].enabled = i < lives;
     }
+
+    private void RefreshBulletCount(int count) => bulletCountText.text = count.ToString();
 
     private void CreateGameOverPanel(Transform parent)
     {
@@ -95,7 +118,7 @@ public sealed class LifeDisplay : MonoBehaviour
         gameOverPanel.SetActive(false);
     }
 
-    private static void CreateText(string label, Transform parent, Font font, int size,
+    private static UnityEngine.UI.Text CreateText(string label, Transform parent, Font font, int size,
         Vector2 position, Vector2 textSize)
     {
         GameObject textObject = new GameObject(label, typeof(RectTransform), typeof(UnityEngine.UI.Text));
@@ -118,6 +141,7 @@ public sealed class LifeDisplay : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.color = Color.white;
         text.raycastTarget = false;
+        return text;
     }
 
     public void ShowGameOver() => gameOverPanel.SetActive(true);
