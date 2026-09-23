@@ -107,13 +107,13 @@ public sealed class MainMenu : MonoBehaviour
             new Vector2(0f, -100f), new Vector2(500f, 90f));
         CreateRankingRow(panel, font, 260f, 22, new[]
         {
-            "순위", "첫 라이프", "두 번째 라이프", "세 번째 라이프", "기록 시점", "모드"
+            "순위", "첫 라이프", "두 번째 라이프", "세 번째 라이프", "기록 시점", "최대 탄막", "모드"
         });
 
         for (int i = 0; i < rankingRows.Length; i++)
         {
             UnityEngine.UI.Text[] cells = CreateRankingRow(panel, font, 195f - i * 48f, 22,
-                new[] { "", "", "", "", "", "" });
+                new[] { "", "", "", "", "", "", "" });
             rankingCells[i] = cells;
             rankingRows[i] = cells[0].transform.parent.gameObject;
             rankingRows[i].SetActive(false);
@@ -129,9 +129,9 @@ public sealed class MainMenu : MonoBehaviour
         int fontSize, string[] values)
     {
         RectTransform row = CreateRect("Ranking Row", parent, new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(1100f, 46f));
-        float[] xPositions = { -500f, -365f, -195f, -25f, 235f, 475f };
-        float[] widths = { 90f, 165f, 165f, 165f, 330f, 140f };
+            new Vector2(0f, y), new Vector2(1220f, 46f));
+        float[] xPositions = { -530f, -410f, -250f, -90f, 140f, 400f, 535f };
+        float[] widths = { 80f, 150f, 150f, 150f, 300f, 130f, 110f };
         UnityEngine.UI.Text[] cells = new UnityEngine.UI.Text[values.Length];
         for (int i = 0; i < values.Length; i++)
             cells[i] = CreateText(values[i], row, font, fontSize, new Vector2(0.5f, 0.5f),
@@ -164,6 +164,7 @@ public sealed class MainMenu : MonoBehaviour
                 FormatTime(record.secondLifeLostSeconds),
                 FormatTime(record.thirdLifeLostSeconds),
                 date,
+                record.maxActiveBullets.ToString(),
                 record.mode ?? ""
             };
             for (int column = 0; column < values.Length; column++)

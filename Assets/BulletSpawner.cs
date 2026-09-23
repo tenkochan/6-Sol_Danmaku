@@ -5,6 +5,7 @@ using UnityEngine;
 public sealed class BulletSpawner : MonoBehaviour
 {
     public int ActiveCount => bullets.Count;
+    public int MaxActiveBullets { get; private set; }
     public float SurvivalTime { get; private set; }
     public event Action<int> CountChanged;
     public event Action<float> SurvivalTimeChanged;
@@ -110,6 +111,8 @@ public sealed class BulletSpawner : MonoBehaviour
         bullet.Initialize(this, playCamera, direction, speed);
         bullets.Add(bullet);
         bullet.gameObject.SetActive(true);
+        if (bullets.Count > MaxActiveBullets)
+            MaxActiveBullets = bullets.Count;
         CountChanged?.Invoke(bullets.Count);
     }
 

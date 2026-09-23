@@ -63,6 +63,7 @@ public sealed class PlayerHealth : MonoBehaviour
             firstLifeLostSeconds = lifeLossTimes[0],
             secondLifeLostSeconds = lifeLossTimes[1],
             thirdLifeLostSeconds = lifeLossTimes[2],
+            maxActiveBullets = bulletSpawner.MaxActiveBullets,
             startedAtIso8601 = startedAtIso8601,
             mode = playMode.ToString()
         });

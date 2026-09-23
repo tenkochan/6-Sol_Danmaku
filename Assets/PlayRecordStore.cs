@@ -15,6 +15,7 @@ public sealed class PlayRecord
     public float firstLifeLostSeconds;
     public float secondLifeLostSeconds;
     public float thirdLifeLostSeconds;
+    public int maxActiveBullets;
     public string startedAtIso8601;
     public string mode;
 }
