@@ -3,6 +3,9 @@ using UnityEngine.InputSystem;
 
 public sealed class PlayerMovement : MonoBehaviour
 {
+    public bool CanMove { get; set; } = true;
+    public Camera PlayCamera => playCamera;
+
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private Camera playCamera;
 
@@ -18,7 +21,7 @@ public sealed class PlayerMovement : MonoBehaviour
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
-        if (keyboard == null || playCamera == null)
+        if (keyboard == null || playCamera == null || !CanMove)
             return;
 
         float x = (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed ? 1f : 0f)
