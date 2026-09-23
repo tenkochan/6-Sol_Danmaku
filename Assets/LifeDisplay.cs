@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.SceneManagement;
 
 public sealed class LifeDisplay : MonoBehaviour
 {
@@ -6,13 +8,14 @@ public sealed class LifeDisplay : MonoBehaviour
 
     private readonly UnityEngine.UI.Image[] slots = new UnityEngine.UI.Image[PlayerHealth.MaxLives];
     private PlayerHealth health;
+    private GameObject gameOverPanel;
 
     private void Awake()
     {
         health = GetComponent<PlayerHealth>();
 
-        GameObject canvasObject = new GameObject("Life Canvas", typeof(RectTransform), typeof(Canvas),
-            typeof(UnityEngine.UI.CanvasScaler));
+        GameObject canvasObject = new GameObject("Game UI", typeof(RectTransform), typeof(Canvas),
+            typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
         Canvas canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvasObject.GetComponent<UnityEngine.UI.CanvasScaler>().uiScaleMode =
@@ -48,6 +51,7 @@ public sealed class LifeDisplay : MonoBehaviour
         }
 
         Refresh(health.CurrentLives);
+        CreateGameOverPanel(canvasObject.transform);
     }
 
     private void OnEnable() => health.LivesChanged += Refresh;
@@ -57,5 +61,70 @@ public sealed class LifeDisplay : MonoBehaviour
     {
         for (int i = 0; i < slots.Length; i++)
             slots[i].enabled = i < lives;
+    }
+
+    private void CreateGameOverPanel(Transform parent)
+    {
+        gameOverPanel = new GameObject("Game Over Panel", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        gameOverPanel.transform.SetParent(parent, false);
+        RectTransform panelRect = gameOverPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+        UnityEngine.UI.Image panelImage = gameOverPanel.GetComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0.08f, 0f, 0f, 0.85f);
+
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        CreateText("GAME OVER", gameOverPanel.transform, font, 80, new Vector2(0f, 55f), new Vector2(700f, 120f));
+
+        GameObject buttonObject = new GameObject("Retry Button", typeof(RectTransform),
+            typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
+        buttonObject.transform.SetParent(gameOverPanel.transform, false);
+        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+        buttonRect.sizeDelta = new Vector2(240f, 72f);
+        buttonRect.anchoredPosition = new Vector2(0f, -70f);
+        buttonObject.GetComponent<UnityEngine.UI.Image>().color = new Color(0.55f, 0.12f, 0.12f);
+        buttonObject.GetComponent<UnityEngine.UI.Button>().onClick.AddListener(Restart);
+        CreateText("다시 하기", buttonObject.transform, font, 32, Vector2.zero, Vector2.zero);
+
+        GameObject eventSystem = new GameObject("Event System", typeof(UnityEngine.EventSystems.EventSystem),
+            typeof(InputSystemUIInputModule));
+        eventSystem.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
+        gameOverPanel.SetActive(false);
+    }
+
+    private static void CreateText(string label, Transform parent, Font font, int size,
+        Vector2 position, Vector2 textSize)
+    {
+        GameObject textObject = new GameObject(label, typeof(RectTransform), typeof(UnityEngine.UI.Text));
+        textObject.transform.SetParent(parent, false);
+        RectTransform rect = textObject.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = textSize;
+        if (textSize == Vector2.zero)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+        }
+
+        UnityEngine.UI.Text text = textObject.GetComponent<UnityEngine.UI.Text>();
+        text.text = label;
+        text.font = font;
+        text.fontSize = size;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.raycastTarget = false;
+    }
+
+    public void ShowGameOver() => gameOverPanel.SetActive(true);
+
+    private static void Restart()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 }

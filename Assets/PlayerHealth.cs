@@ -10,12 +10,14 @@ public sealed class PlayerHealth : MonoBehaviour
 
     private PlayerMovement movement;
     private SpriteRenderer spriteRenderer;
+    private LifeDisplay lifeDisplay;
     private bool respawning;
 
     private void Awake()
     {
         movement = GetComponent<PlayerMovement>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+        lifeDisplay = GetComponent<LifeDisplay>();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -27,7 +29,22 @@ public sealed class PlayerHealth : MonoBehaviour
         LivesChanged?.Invoke(CurrentLives);
         movement.CanMove = false;
         respawning = true;
-        StartCoroutine(Respawn());
+        DeathPieces.Create(spriteRenderer);
+
+        if (CurrentLives > 0)
+            StartCoroutine(Respawn());
+        else
+        {
+            spriteRenderer.enabled = false;
+            StartCoroutine(GameOverAfterEffect());
+        }
+    }
+
+    private IEnumerator GameOverAfterEffect()
+    {
+        yield return new WaitForSeconds(DeathPieces.Duration);
+        Time.timeScale = 0f;
+        lifeDisplay.ShowGameOver();
     }
 
     private IEnumerator Respawn()
@@ -43,7 +60,7 @@ public sealed class PlayerHealth : MonoBehaviour
 
         transform.position = camera.ViewportToWorldPoint(new Vector3(0.5f, startY, depth));
 
-        const float duration = 2f;
+        const float duration = 1f;
         float elapsed = 0f;
         while (elapsed < duration)
         {
