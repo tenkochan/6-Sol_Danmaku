@@ -30,15 +30,15 @@ public sealed class PlayerMovement : MonoBehaviour
         float speed = keyboard.leftShiftKey.isPressed ? moveSpeed * 0.4f : moveSpeed;
         Vector3 position = transform.position + (Vector3)(direction * speed * Time.deltaTime);
 
-        float halfHeight = playCamera.orthographicSize;
-        float halfWidth = halfHeight * playCamera.aspect;
-        Vector3 cameraPosition = playCamera.transform.position;
-        Vector3 spriteExtent = spriteRenderer.bounds.extents;
+        Bounds bounds = spriteRenderer.bounds;
+        Vector3 center = playCamera.WorldToViewportPoint(position);
+        Vector3 corner = playCamera.WorldToViewportPoint(position + bounds.extents);
+        Vector3 oppositeCorner = playCamera.WorldToViewportPoint(position - bounds.extents);
+        float extentX = Mathf.Max(Mathf.Abs(corner.x - center.x), Mathf.Abs(oppositeCorner.x - center.x));
+        float extentY = Mathf.Max(Mathf.Abs(corner.y - center.y), Mathf.Abs(oppositeCorner.y - center.y));
 
-        position.x = Mathf.Clamp(position.x, cameraPosition.x - halfWidth + spriteExtent.x,
-            cameraPosition.x + halfWidth - spriteExtent.x);
-        position.y = Mathf.Clamp(position.y, cameraPosition.y - halfHeight + spriteExtent.y,
-            cameraPosition.y + halfHeight - spriteExtent.y);
-        transform.position = position;
+        center.x = Mathf.Clamp(center.x, extentX, 1f - extentX);
+        center.y = Mathf.Clamp(center.y, extentY, 1f - extentY);
+        transform.position = playCamera.ViewportToWorldPoint(center);
     }
 }
