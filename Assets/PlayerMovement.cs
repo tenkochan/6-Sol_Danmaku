@@ -33,7 +33,7 @@ public sealed class PlayerMovement : MonoBehaviour
         float moveDeltaTime = Time.deltaTime;
         if (UseBotInput)
         {
-            float remainingInputTime = BotInputExpiresAt - Time.realtimeSinceStartup;
+            float remainingInputTime = BotInputExpiresAt - Time.time;
             direction = remainingInputTime > 0f ? BotDirection.normalized : Vector2.zero;
             moveDeltaTime = Mathf.Min(moveDeltaTime, Mathf.Max(0f, remainingInputTime));
             speed = NormalSpeed;

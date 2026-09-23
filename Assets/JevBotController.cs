@@ -12,16 +12,17 @@ public sealed class JevBotController : MonoBehaviour
     private const float DecisionStep = 0.2f;
     private const int PlanSteps = 6;
     private const float PlanHorizon = DecisionStep * PlanSteps;
+    private const float LeadSeconds = 5f;
 
     private readonly List<TestBullet> activeBullets = new List<TestBullet>();
     private readonly Queue<DecisionRecord> recentDecisions = new Queue<DecisionRecord>();
     private readonly List<PlannedStep> actionBuffer = new List<PlannedStep>(PlanSteps);
+    private readonly List<BulletSpawner.ScheduledBullet> scheduledBullets = new List<BulletSpawner.ScheduledBullet>();
     private PlayerMovement movement;
     private PlayerHealth health;
     private BulletSpawner spawner;
     private string apiKey;
     private bool requestInFlight;
-    private bool wasControllable;
     private bool failed;
     private string previousAction = "Stay";
     private int activeStep = -1;
@@ -30,6 +31,15 @@ public sealed class JevBotController : MonoBehaviour
     private float idleStartedAt = -1f;
     private Coroutine requestCoroutine;
     private UnityWebRequest activeRequest;
+    private float plannedUntil;
+    private Vector2 virtualPosition;
+    private float virtualRespawnRemaining;
+    private float virtualInvulnerabilityRemaining;
+    private float countdownRemaining = 5f;
+    private bool countdownDone;
+    private bool buffering = true;
+    private bool pendingRebase;
+    private UnityEngine.UI.Text statusText;
 
     private void Start()
     {
@@ -45,6 +55,11 @@ public sealed class JevBotController : MonoBehaviour
         movement.BotDirection = Vector2.zero;
         movement.BotInputExpiresAt = 0f;
         spawner = movement.PlayCamera.GetComponent<BulletSpawner>();
+        spawner.EnableBotSchedule();
+        Vector3 viewport = movement.PlayCamera.WorldToViewportPoint(transform.position);
+        virtualPosition = new Vector2(viewport.x, viewport.y);
+        CreateStatusOverlay();
+        Time.timeScale = 0f;
         health.Hit += LogRecentDecisionsOnHit;
         if (!JevLocalSettings.TryGetApiKey(out apiKey))
             FailBot("Local Jev API key is unavailable.");
@@ -54,6 +69,8 @@ public sealed class JevBotController : MonoBehaviour
     {
         if (health != null)
             health.Hit -= LogRecentDecisionsOnHit;
+        if (health != null && health.Mode == PlayMode.Bot)
+            Time.timeScale = 1f;
     }
 
     private void Update()
@@ -61,32 +78,68 @@ public sealed class JevBotController : MonoBehaviour
         if (failed || health.CurrentLives == 0)
             return;
 
-        float now = Time.realtimeSinceStartup;
-        if (!movement.CanMove || health.IsRespawning)
+        if (pendingRebase)
         {
-            if (wasControllable)
-            {
-                wasControllable = false;
-                ClearPlan(now, "control disabled");
-                CancelPendingRequest();
-            }
-            if (health.IsRespawning && !requestInFlight)
-                StartDecisionRequest();
-            return;
+            Vector3 viewport = movement.PlayCamera.WorldToViewportPoint(transform.position);
+            virtualPosition = new Vector2(viewport.x, viewport.y);
+            virtualRespawnRemaining = health.RemainingRespawnTime;
+            virtualInvulnerabilityRemaining = virtualRespawnRemaining + 1f;
+            pendingRebase = false;
         }
 
-        if (!wasControllable)
+        if (!countdownDone)
         {
-            wasControllable = true;
-            int expiredDuringRespawn = actionBuffer.RemoveAll(step => now >= step.endsAt);
-            activeStep = -1;
-            if (expiredDuringRespawn > 0)
-                Debug.Log($"Jev Bot discarded {expiredDuringRespawn} plan steps before control returned.");
+            countdownRemaining -= Time.unscaledDeltaTime;
+            countdownDone = countdownRemaining <= 0f;
+            statusText.text = countdownDone ? "BUFFERING..." : Mathf.CeilToInt(countdownRemaining).ToString();
         }
-        UpdateBufferedAction(now);
 
         if (!requestInFlight)
             StartDecisionRequest();
+
+        float playbackTime = spawner.SurvivalTime;
+        float bufferSeconds = Mathf.Max(0f, plannedUntil - playbackTime);
+        if (!countdownDone)
+            return;
+
+        if (!buffering && bufferSeconds < 0.5f)
+            SetBuffering(true, playbackTime, bufferSeconds);
+        else if (buffering && bufferSeconds >= LeadSeconds)
+            SetBuffering(false, playbackTime, bufferSeconds);
+
+        if (!buffering)
+            UpdateBufferedAction(playbackTime);
+    }
+
+    private void SetBuffering(bool value, float playbackTime, float bufferSeconds)
+    {
+        buffering = value;
+        Time.timeScale = value ? 0f : 1f;
+        statusText.text = value ? "BUFFERING..." : "";
+        Debug.Log($"Jev Bot buffering {(value ? "start" : "end")}: playback={playbackTime:F2}s, plannedUntil={plannedUntil:F2}s, bufferSeconds={bufferSeconds:F2}s.");
+    }
+
+    private void CreateStatusOverlay()
+    {
+        GameObject canvasObject = new GameObject("Bot Buffer UI", typeof(RectTransform), typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler));
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 20;
+        UnityEngine.UI.CanvasScaler scaler = canvasObject.GetComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        GameObject label = new GameObject("Bot Status", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+        label.transform.SetParent(canvasObject.transform, false);
+        RectTransform rect = label.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(900f, 160f);
+        statusText = label.GetComponent<UnityEngine.UI.Text>();
+        statusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        statusText.fontSize = 90;
+        statusText.alignment = TextAnchor.MiddleCenter;
+        statusText.color = Color.white;
+        statusText.raycastTarget = false;
+        statusText.text = "5";
     }
 
     private void StartDecisionRequest()
@@ -97,8 +150,9 @@ public sealed class JevBotController : MonoBehaviour
 
     private IEnumerator RequestDecision()
     {
+        float planStart = plannedUntil;
         string requestedAt = DateTimeOffset.Now.ToString("HH:mm:ss.fff");
-        Vector3 requestPosition = movement.PlayCamera.WorldToViewportPoint(transform.position);
+        Vector2 requestPosition = virtualPosition;
         string requestJson = null;
         try
         {
@@ -172,23 +226,20 @@ public sealed class JevBotController : MonoBehaviour
                     FailBot("Jev API returned an invalid movement plan step.");
                     yield break;
                 }
-                float startsAt = requestStartedAt + i * DecisionStep;
+                float startsAt = planStart + i * DecisionStep;
                 newPlan[i] = new PlannedStep(choices[i].choice, direction, startsAt, startsAt + DecisionStep);
             }
 
             float now = Time.realtimeSinceStartup;
-            int expired = 0;
-            ClearPlan(now, "new plan");
             foreach (PlannedStep step in newPlan)
             {
-                if (now >= step.endsAt)
-                    expired++;
-                else
-                    actionBuffer.Add(step);
+                actionBuffer.Add(step);
+                AdvanceVirtualPlayer(step);
             }
-            if (movement.CanMove && !health.IsRespawning)
-                UpdateBufferedAction(now);
-            Debug.Log($"Jev Bot plan request {requestedAt}, latency {now - requestStartedAt:F3}s, expired steps {expired}, executable steps {actionBuffer.Count}, player viewport ({requestPosition.x:F3}, {requestPosition.y:F3}).");
+            plannedUntil = planStart + PlanHorizon;
+            previousAction = newPlan[PlanSteps - 1].choice;
+            float bufferSeconds = plannedUntil - spawner.SurvivalTime;
+            Debug.Log($"Jev Bot plan request {requestedAt}: playback={spawner.SurvivalTime:F2}s, plannedUntil={plannedUntil:F2}s, bufferSeconds={bufferSeconds:F2}s, latency={now - requestStartedAt:F3}s, new actions={PlanSteps}, virtual player=({requestPosition.x:F3},{requestPosition.y:F3}).");
         }
 
         activeRequest = null;
@@ -196,6 +247,39 @@ public sealed class JevBotController : MonoBehaviour
         requestInFlight = false;
         if (!failed && health.CurrentLives > 0)
             StartDecisionRequest();
+    }
+
+    private void AdvanceVirtualPlayer(PlannedStep step)
+    {
+        float movableTime = DecisionStep;
+        if (virtualRespawnRemaining > 0f)
+        {
+            float respawnTime = Mathf.Min(movableTime, virtualRespawnRemaining);
+            virtualRespawnRemaining -= respawnTime;
+            movableTime -= respawnTime;
+            float bottom = GetPlayerViewportMargin().y;
+            virtualPosition.y = Mathf.Lerp(bottom, Mathf.Max(bottom, 0.25f), 1f - virtualRespawnRemaining);
+            virtualPosition.x = 0.5f;
+        }
+        virtualInvulnerabilityRemaining = Mathf.Max(0f, virtualInvulnerabilityRemaining - DecisionStep);
+        if (movableTime <= 0f)
+            return;
+        Camera camera = movement.PlayCamera;
+        Vector3 worldOrigin = camera.ViewportToWorldPoint(new Vector3(virtualPosition.x, virtualPosition.y,
+            camera.WorldToViewportPoint(transform.position).z));
+        Vector3 worldEnd = worldOrigin + (Vector3)(step.direction.normalized * movement.NormalSpeed * movableTime);
+        Vector3 viewportEnd = camera.WorldToViewportPoint(worldEnd);
+        Vector2 margin = GetPlayerViewportMargin();
+        virtualPosition.x = Mathf.Clamp(viewportEnd.x, margin.x, 1f - margin.x);
+        virtualPosition.y = Mathf.Clamp(viewportEnd.y, margin.y, 1f - margin.y);
+    }
+
+    private Vector2 GetPlayerViewportMargin()
+    {
+        Camera camera = movement.PlayCamera;
+        Vector3 center = camera.WorldToViewportPoint(transform.position);
+        Vector3 corner = camera.WorldToViewportPoint(transform.position + GetComponent<SpriteRenderer>().bounds.extents);
+        return new Vector2(Mathf.Abs(corner.x - center.x), Mathf.Abs(corner.y - center.y));
     }
 
     private void PruneDecisions(float now)
@@ -206,16 +290,16 @@ public sealed class JevBotController : MonoBehaviour
 
     private void LogRecentDecisionsOnHit()
     {
-        float now = Time.realtimeSinceStartup;
-        LogIdleDuration(now, "hit");
-        ClearPlan(now, "hit");
+        float realNow = Time.realtimeSinceStartup;
+        float playbackTime = spawner.SurvivalTime;
+        LogIdleDuration(playbackTime, "hit");
+        ClearPlan(playbackTime, "hit");
         previousAction = "Stay";
-        wasControllable = false;
         CancelPendingRequest();
-        PruneDecisions(now);
+        PruneDecisions(realNow);
         StringBuilder summary = new StringBuilder($"Jev Bot hit: {recentDecisions.Count} successful choices in the previous 1s");
         foreach (DecisionRecord decision in recentDecisions)
-            summary.Append($" | -{now - decision.time:F2}s {decision.action} ({decision.x:F2}, {decision.y:F2})");
+            summary.Append($" | -{realNow - decision.time:F2}s {decision.action} ({decision.x:F2}, {decision.y:F2})");
         Camera camera = movement.PlayCamera;
         Vector3 playerPosition = camera.WorldToViewportPoint(transform.position);
         spawner.FillActiveBullets(activeBullets);
@@ -229,6 +313,13 @@ public sealed class JevBotController : MonoBehaviour
             summary.Append($" | threat {i + 1}: relativePosition=({threat.relativePosition.x:F3},{threat.relativePosition.y:F3}), relativeVelocity=({threat.relativeVelocity.x:F3},{threat.relativeVelocity.y:F3}), timeToClosestApproach={threat.timeToClosestApproach:F3}s, closestApproachDistance={threat.closestApproachDistance:F3}");
         }
         Debug.Log(summary.ToString());
+        if (health.CurrentLives > 0)
+        {
+            plannedUntil = playbackTime;
+            pendingRebase = true;
+            if (!buffering)
+                SetBuffering(true, playbackTime, 0f);
+        }
     }
 
     private static float ThreatScore(JevBulletState bullet)
@@ -240,6 +331,12 @@ public sealed class JevBotController : MonoBehaviour
 
     private void UpdateBufferedAction(float now)
     {
+        while (actionBuffer.Count > 0 && actionBuffer[0].endsAt <= now - DecisionStep)
+        {
+            actionBuffer.RemoveAt(0);
+            if (activeStep >= 0)
+                activeStep--;
+        }
         int current = -1;
         for (int i = 0; i < actionBuffer.Count; i++)
         {
@@ -269,13 +366,13 @@ public sealed class JevBotController : MonoBehaviour
         PlannedStep step = actionBuffer[current];
         LogIdleDuration(now, "next step");
         movement.BotDirection = step.direction;
-        movement.BotInputExpiresAt = step.endsAt;
+        movement.BotInputExpiresAt = Time.time + Mathf.Max(0f, step.endsAt - now);
         choiceAppliedAt = now;
         activeChoice = step.choice;
-        previousAction = step.choice;
         Vector3 position = movement.PlayCamera.WorldToViewportPoint(transform.position);
-        recentDecisions.Enqueue(new DecisionRecord(now, step.choice, position.x, position.y));
-        PruneDecisions(now);
+        float realNow = Time.realtimeSinceStartup;
+        recentDecisions.Enqueue(new DecisionRecord(realNow, step.choice, position.x, position.y));
+        PruneDecisions(realNow);
     }
 
     private void ClearPlan(float now, string reason)
@@ -324,11 +421,13 @@ public sealed class JevBotController : MonoBehaviour
     private JevRequest BuildRequest()
     {
         Camera camera = movement.PlayCamera;
-        Vector3 playerViewport = camera.WorldToViewportPoint(transform.position);
+        Vector3 playerViewport = new Vector3(virtualPosition.x, virtualPosition.y,
+            camera.WorldToViewportPoint(transform.position).z);
         Bounds playerBounds = GetComponent<SpriteRenderer>().bounds;
+        Vector3 actualCenter = camera.WorldToViewportPoint(transform.position);
         Vector3 corner = camera.WorldToViewportPoint(transform.position + playerBounds.extents);
-        float marginX = Mathf.Abs(corner.x - playerViewport.x);
-        float marginY = Mathf.Abs(corner.y - playerViewport.y);
+        float marginX = Mathf.Abs(corner.x - actualCenter.x);
+        float marginY = Mathf.Abs(corner.y - actualCenter.y);
         JevHitSize playerHitSize = GetHitSize(camera, GetComponent<CircleCollider2D>());
         float left = Mathf.Max(marginX, playerHitSize.radiusX);
         float right = 1f - left;
@@ -337,16 +436,44 @@ public sealed class JevBotController : MonoBehaviour
         float usableWidth = Mathf.Max(right - left, Mathf.Epsilon);
         float usableHeight = Mathf.Max(top - bottom, Mathf.Epsilon);
 
-        spawner.FillActiveBullets(activeBullets);
-        JevBulletState[] bullets = new JevBulletState[activeBullets.Count];
-        for (int i = 0; i < activeBullets.Count; i++)
-            bullets[i] = BuildBulletState(camera, playerViewport, activeBullets[i]);
+        JevBulletState[] bullets;
+        if (Mathf.Abs(plannedUntil - spawner.SurvivalTime) < 0.001f)
+        {
+            spawner.FillActiveBullets(activeBullets);
+            bullets = new JevBulletState[activeBullets.Count];
+            for (int i = 0; i < activeBullets.Count; i++)
+                bullets[i] = BuildBulletState(camera, playerViewport, activeBullets[i]);
+        }
+        else
+        {
+            spawner.FillBotBulletsAt(plannedUntil, scheduledBullets);
+            int count = Mathf.Min(100, scheduledBullets.Count);
+            bullets = new JevBulletState[count];
+            for (int i = 0; i < count; i++)
+                bullets[i] = BuildScheduledBulletState(playerViewport, scheduledBullets[scheduledBullets.Count - count + i], plannedUntil);
+        }
+
+        spawner.FillBotSchedule(plannedUntil, plannedUntil + LeadSeconds, scheduledBullets);
+        JevFutureBullet[] futureBullets = new JevFutureBullet[scheduledBullets.Count];
+        for (int i = 0; i < futureBullets.Length; i++)
+        {
+            BulletSpawner.ScheduledBullet bullet = scheduledBullets[i];
+            futureBullets[i] = new JevFutureBullet
+            {
+                spawnTime = bullet.spawnTime,
+                spawnPosition = new JevPosition { x = bullet.position.x, y = bullet.position.y },
+                velocity = new JevPosition { x = bullet.velocity.x, y = bullet.velocity.y },
+                hitSize = new JevHitSize { radiusX = bullet.radiusX, radiusY = bullet.radiusY }
+            };
+        }
 
         return new JevRequest
         {
             state = new JevState
             {
                 objective = "Avoid enemy bullets and survive as long as possible.",
+                planningGameTime = plannedUntil,
+                playbackGameTime = spawner.SurvivalTime,
                 player = new JevPosition { x = playerViewport.x, y = playerViewport.y },
                 distanceToLeft = Mathf.Clamp01((playerViewport.x - left) / usableWidth),
                 distanceToRight = Mathf.Clamp01((right - playerViewport.x) / usableWidth),
@@ -359,11 +486,12 @@ public sealed class JevBotController : MonoBehaviour
                 planHorizon = PlanHorizon,
                 maxMoveDistancePerDecision = movement.NormalSpeed * DecisionStep,
                 playerHitSize = playerHitSize,
-                canControl = movement.CanMove,
-                invincible = health.IsInvincible,
-                remainingRespawnSeconds = health.RemainingRespawnTime,
+                canControl = virtualRespawnRemaining <= 0f,
+                invincible = virtualInvulnerabilityRemaining > 0f,
+                remainingRespawnSeconds = virtualRespawnRemaining,
                 previousAction = previousAction,
                 bullets = bullets,
+                futureBullets = futureBullets,
                 playableArea = new JevPlayableArea
                 {
                     left = left,
@@ -379,8 +507,24 @@ public sealed class JevBotController : MonoBehaviour
     {
         Vector3 position = camera.WorldToViewportPoint(bullet.transform.position);
         Vector3 velocityEnd = camera.WorldToViewportPoint(bullet.transform.position + bullet.Direction * bullet.Speed);
-        Vector2 relativePosition = new Vector2(position.x - playerViewport.x, position.y - playerViewport.y);
-        Vector2 relativeVelocity = new Vector2(velocityEnd.x - position.x, velocityEnd.y - position.y);
+        return BuildBulletState(new Vector2(playerViewport.x, playerViewport.y),
+            new Vector2(position.x, position.y), new Vector2(velocityEnd.x - position.x, velocityEnd.y - position.y),
+            bullet.Speed, GetHitSize(camera, bullet.GetComponent<CircleCollider2D>()));
+    }
+
+    private static JevBulletState BuildScheduledBulletState(Vector3 playerViewport,
+        BulletSpawner.ScheduledBullet bullet, float gameTime)
+    {
+        Vector2 position = bullet.position + bullet.velocity * (gameTime - bullet.spawnTime);
+        return BuildBulletState(new Vector2(playerViewport.x, playerViewport.y), position, bullet.velocity,
+            bullet.speed, new JevHitSize { radiusX = bullet.radiusX, radiusY = bullet.radiusY });
+    }
+
+    private static JevBulletState BuildBulletState(Vector2 playerPosition, Vector2 position,
+        Vector2 velocity, float speed, JevHitSize hitSize)
+    {
+        Vector2 relativePosition = position - playerPosition;
+        Vector2 relativeVelocity = velocity;
         float velocitySquared = relativeVelocity.sqrMagnitude;
         bool approaching = velocitySquared > 0.00000001f && Vector2.Dot(relativePosition, relativeVelocity) < 0f;
         float timeToClosestApproach = approaching
@@ -396,8 +540,8 @@ public sealed class JevBotController : MonoBehaviour
             y = position.y,
             velocityX = relativeVelocity.x,
             velocityY = relativeVelocity.y,
-            speed = bullet.Speed,
-            hitSize = GetHitSize(camera, bullet.GetComponent<CircleCollider2D>()),
+            speed = speed,
+            hitSize = hitSize,
             relativePosition = new JevPosition { x = relativePosition.x, y = relativePosition.y },
             relativeVelocity = new JevPosition { x = relativeVelocity.x, y = relativeVelocity.y },
             currentDistance = relativePosition.magnitude,
@@ -426,10 +570,13 @@ public sealed class JevBotController : MonoBehaviour
 
         failed = true;
         requestInFlight = false;
-        float now = Time.realtimeSinceStartup;
+        float now = spawner.SurvivalTime;
         LogIdleDuration(now, "API error");
         ClearPlan(now, "API error");
         Debug.LogError(message);
+        Time.timeScale = 1f;
+        if (statusText != null)
+            statusText.text = "";
         health.EndForApiError();
     }
 
@@ -495,6 +642,8 @@ public sealed class JevBotController : MonoBehaviour
     private sealed class JevState
     {
         public string objective;
+        public float planningGameTime;
+        public float playbackGameTime;
         public JevPosition player;
         public float distanceToLeft;
         public float distanceToRight;
@@ -512,7 +661,17 @@ public sealed class JevBotController : MonoBehaviour
         public float remainingRespawnSeconds;
         public string previousAction;
         public JevBulletState[] bullets;
+        public JevFutureBullet[] futureBullets;
         public JevPlayableArea playableArea;
+    }
+
+    [Serializable]
+    private sealed class JevFutureBullet
+    {
+        public float spawnTime;
+        public JevPosition spawnPosition;
+        public JevPosition velocity;
+        public JevHitSize hitSize;
     }
 
     [Serializable]
@@ -575,7 +734,7 @@ public sealed class JevBotController : MonoBehaviour
 
         public JevChoiceQuestion(int step)
         {
-            instructions = $"Avoid enemy bullets and survive as long as possible. Immediate collision avoidance is the highest priority. Do not move toward a bullet on a collision course in the near future. A timeToClosestApproach of -1 means the bullet is receding or stationary. Preserve escape space. Avoid repeatedly moving toward a screen boundary when doing so would significantly reduce future escape directions, unless necessary to avoid an immediate collision. Choose the movement for t+{step * DecisionStep:F1} to t+{(step + 1) * DecisionStep:F1} seconds, relative to this request.";
+            instructions = $"Avoid enemy bullets and survive as long as possible. You know the next 5 seconds of bullet spawns in futureBullets; predict positions from spawnTime, spawnPosition and velocity. Prioritize immediate survival and preserve future escape routes. Do not move toward a bullet on a near-future collision course. A timeToClosestApproach of -1 means receding or stationary. Choose the movement for game time planningGameTime+{step * DecisionStep:F1} to +{(step + 1) * DecisionStep:F1} seconds.";
         }
     }
 
