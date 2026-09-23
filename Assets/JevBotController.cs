@@ -18,6 +18,7 @@ public sealed class JevBotController : MonoBehaviour
     private readonly Queue<DecisionRecord> recentDecisions = new Queue<DecisionRecord>();
     private readonly List<PlannedStep> actionBuffer = new List<PlannedStep>(PlanSteps);
     private readonly List<BulletSpawner.ScheduledBullet> scheduledBullets = new List<BulletSpawner.ScheduledBullet>();
+    private readonly List<BulletSpawner.ScheduledBullet> futureScheduledBullets = new List<BulletSpawner.ScheduledBullet>();
     private PlayerMovement movement;
     private PlayerHealth health;
     private BulletSpawner spawner;
@@ -44,7 +45,7 @@ public sealed class JevBotController : MonoBehaviour
     private void Start()
     {
         health = GetComponent<PlayerHealth>();
-        if (health.Mode != PlayMode.Bot)
+        if (health.Mode != PlayMode.Bot || health.IsAlmighty)
         {
             enabled = false;
             return;
@@ -420,8 +421,34 @@ public sealed class JevBotController : MonoBehaviour
 
     private JevRequest BuildRequest()
     {
+        return new JevRequest
+        {
+            state = BuildState(plannedUntil, spawner.SurvivalTime, virtualPosition,
+                virtualRespawnRemaining, virtualInvulnerabilityRemaining, previousAction, false)
+        };
+    }
+
+    public string BuildSingleStepRequest(float planningTime, Vector2 playerPosition, string lastAction,
+        out int existingBulletCount, out int futureBulletCount)
+    {
+        if (movement == null)
+            movement = GetComponent<PlayerMovement>();
+        if (spawner == null)
+            spawner = movement.PlayCamera.GetComponent<BulletSpawner>();
+        JevState state = BuildState(planningTime, planningTime, playerPosition, 0f, 0f, lastAction, true);
+        existingBulletCount = state.bullets.Length;
+        futureBulletCount = state.futureBullets.Length;
+        return JsonUtility.ToJson(new JevSingleStepRequest
+        {
+            state = state
+        });
+    }
+
+    private JevState BuildState(float planningTime, float playbackTime, Vector2 playerPosition,
+        float respawnRemaining, float invulnerabilityRemaining, string lastAction, bool virtualSchedule)
+    {
         Camera camera = movement.PlayCamera;
-        Vector3 playerViewport = new Vector3(virtualPosition.x, virtualPosition.y,
+        Vector3 playerViewport = new Vector3(playerPosition.x, playerPosition.y,
             camera.WorldToViewportPoint(transform.position).z);
         Bounds playerBounds = GetComponent<SpriteRenderer>().bounds;
         Vector3 actualCenter = camera.WorldToViewportPoint(transform.position);
@@ -437,27 +464,28 @@ public sealed class JevBotController : MonoBehaviour
         float usableHeight = Mathf.Max(top - bottom, Mathf.Epsilon);
 
         JevBulletState[] bullets;
-        if (Mathf.Abs(plannedUntil - spawner.SurvivalTime) < 0.001f)
+        if (!virtualSchedule && Mathf.Abs(planningTime - spawner.SurvivalTime) < 0.001f)
         {
             spawner.FillActiveBullets(activeBullets);
             bullets = new JevBulletState[activeBullets.Count];
             for (int i = 0; i < activeBullets.Count; i++)
                 bullets[i] = BuildBulletState(camera, playerViewport, activeBullets[i]);
+            spawner.FillBotSchedule(planningTime, planningTime + LeadSeconds, futureScheduledBullets);
         }
         else
         {
-            spawner.FillBotBulletsAt(plannedUntil, scheduledBullets);
-            int count = Mathf.Min(100, scheduledBullets.Count);
+            spawner.FillBotScheduleForSimulation(planningTime, LeadSeconds,
+                scheduledBullets, futureScheduledBullets);
+            int count = scheduledBullets.Count;
             bullets = new JevBulletState[count];
             for (int i = 0; i < count; i++)
-                bullets[i] = BuildScheduledBulletState(playerViewport, scheduledBullets[scheduledBullets.Count - count + i], plannedUntil);
+                bullets[i] = BuildScheduledBulletState(playerViewport, scheduledBullets[i], planningTime);
         }
 
-        spawner.FillBotSchedule(plannedUntil, plannedUntil + LeadSeconds, scheduledBullets);
-        JevFutureBullet[] futureBullets = new JevFutureBullet[scheduledBullets.Count];
+        JevFutureBullet[] futureBullets = new JevFutureBullet[futureScheduledBullets.Count];
         for (int i = 0; i < futureBullets.Length; i++)
         {
-            BulletSpawner.ScheduledBullet bullet = scheduledBullets[i];
+            BulletSpawner.ScheduledBullet bullet = futureScheduledBullets[i];
             futureBullets[i] = new JevFutureBullet
             {
                 spawnTime = bullet.spawnTime,
@@ -467,13 +495,11 @@ public sealed class JevBotController : MonoBehaviour
             };
         }
 
-        return new JevRequest
+        return new JevState
         {
-            state = new JevState
-            {
                 objective = "Avoid enemy bullets and survive as long as possible.",
-                planningGameTime = plannedUntil,
-                playbackGameTime = spawner.SurvivalTime,
+                planningGameTime = planningTime,
+                playbackGameTime = playbackTime,
                 player = new JevPosition { x = playerViewport.x, y = playerViewport.y },
                 distanceToLeft = Mathf.Clamp01((playerViewport.x - left) / usableWidth),
                 distanceToRight = Mathf.Clamp01((right - playerViewport.x) / usableWidth),
@@ -486,10 +512,10 @@ public sealed class JevBotController : MonoBehaviour
                 planHorizon = PlanHorizon,
                 maxMoveDistancePerDecision = movement.NormalSpeed * DecisionStep,
                 playerHitSize = playerHitSize,
-                canControl = virtualRespawnRemaining <= 0f,
-                invincible = virtualInvulnerabilityRemaining > 0f,
-                remainingRespawnSeconds = virtualRespawnRemaining,
-                previousAction = previousAction,
+                canControl = respawnRemaining <= 0f,
+                invincible = invulnerabilityRemaining > 0f,
+                remainingRespawnSeconds = respawnRemaining,
+                previousAction = lastAction,
                 bullets = bullets,
                 futureBullets = futureBullets,
                 playableArea = new JevPlayableArea
@@ -499,7 +525,6 @@ public sealed class JevBotController : MonoBehaviour
                     bottom = bottom,
                     top = top
                 }
-            }
         };
     }
 
@@ -636,6 +661,20 @@ public sealed class JevBotController : MonoBehaviour
         public string model = Model;
         public JevState state;
         public JevQuestions questions = new JevQuestions();
+    }
+
+    [Serializable]
+    private sealed class JevSingleStepRequest
+    {
+        public string model = Model;
+        public JevState state;
+        public JevSingleStepQuestions questions = new JevSingleStepQuestions();
+    }
+
+    [Serializable]
+    private sealed class JevSingleStepQuestions
+    {
+        public JevChoiceQuestion move0 = new JevChoiceQuestion(0);
     }
 
     [Serializable]

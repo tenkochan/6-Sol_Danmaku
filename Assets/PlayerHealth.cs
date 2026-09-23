@@ -7,7 +7,9 @@ public sealed class PlayerHealth : MonoBehaviour
 {
     public const int MaxLives = 3;
     public static PlayMode SelectedMode { get; set; } = PlayMode.Human;
+    public static bool SelectedAlmighty { get; set; }
     public PlayMode Mode => playMode;
+    public bool IsAlmighty { get; private set; }
     public int CurrentLives { get; private set; } = MaxLives;
     public bool IsRespawning => respawning && CurrentLives > 0;
     public bool IsInvincible => invulnerable;
@@ -29,7 +31,11 @@ public sealed class PlayerHealth : MonoBehaviour
     private BulletSpawner bulletSpawner;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetSelectedMode() => SelectedMode = PlayMode.Human;
+    private static void ResetSelectedMode()
+    {
+        SelectedMode = PlayMode.Human;
+        SelectedAlmighty = false;
+    }
 
     private void Awake()
     {
@@ -38,7 +44,10 @@ public sealed class PlayerHealth : MonoBehaviour
         lifeDisplay = GetComponent<LifeDisplay>();
         bulletSpawner = movement.PlayCamera.GetComponent<BulletSpawner>();
         playMode = SelectedMode;
+        IsAlmighty = playMode == PlayMode.Bot && SelectedAlmighty;
         startedAtIso8601 = DateTimeOffset.Now.ToString("o");
+        if (IsAlmighty)
+            gameObject.AddComponent<AlmightyBotController>();
     }
 
     public void TakeHit()
@@ -88,6 +97,12 @@ public sealed class PlayerHealth : MonoBehaviour
         FinishGame(false, "JevApiError");
     }
 
+    public void MarkAlmightyGameplayStarted()
+    {
+        if (IsAlmighty)
+            startedAtIso8601 = DateTimeOffset.Now.ToString("o");
+    }
+
     private void FinishGame(bool completedNormally, string endReason)
     {
         bulletSpawner.StopSurvivalTimer();
@@ -111,6 +126,9 @@ public sealed class PlayerHealth : MonoBehaviour
             maxActiveBullets = bulletSpawner.MaxActiveBullets,
             startedAtIso8601 = startedAtIso8601,
             mode = playMode.ToString(),
+            planName = IsAlmighty && AlmightyChallengeExchange.HasSelectedAnswer
+                ? AlmightyChallengeExchange.SelectedAnswer.name : null,
+            almighty = IsAlmighty,
             completedNormally = completedNormally,
             endReason = endReason
         });

@@ -19,6 +19,8 @@ public sealed class PlayRecord
     public int maxActiveBullets;
     public string startedAtIso8601;
     public string mode;
+    public string planName;
+    public bool almighty;
     public bool completedNormally;
     public string endReason;
 }
