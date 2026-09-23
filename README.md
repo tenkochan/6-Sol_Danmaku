@@ -65,6 +65,8 @@ Unity Editor에서는 프로젝트 루트에 **`.secrets/jev.local.json`** 파�
 
 현재 코드는 `https://jev-ai.pro/api/v1/systemone`에 `Authorization: Bearer <apiKey>`로 요청하며 모델 이름은 `jev-latest`입니다. Unity Editor의 **Tools → Jev → Check Local API Key**로 로컬 파일을 읽을 수 있는지 확인할 수 있습니다. 키 값은 Console에 출력하지 않습니다. `.secrets/` 전체가 `.gitignore`에 포함되므로 실제 키 파일을 Git에 추가하지 마세요. Human 모드와 외부 Answer 재생에는 Jev Key가 필요하지 않습니다.
 
+**API Key가 없어도 Human 모드는 플레이할 수 있지만, Jev 기반 일반 Bot과 Almighty planning은 사용할 수 없습니다.** 이 모드를 메뉴에서 선택할 때 Key 파일이 없거나 `apiKey`가 비어 있으면 게임 씬으로 이동하지 않고 메뉴에 설정 안내를 표시합니다. Key가 있어도 인증이 거부되면 Game Over 화면에 인증 오류를 표시하며, 해당 판은 비정상 종료로 저장되어 랭킹에 포함되지 않습니다.
+
 ## 랭킹과 로컬 기록
 
 게임 한 판이 끝나면 `Application.persistentDataPath/play_records.json`에 JSON 배열(`records`)의 새 항목을 추가합니다. 이는 실행 환경별 로컬 데이터이며 저장소에 포함되지 않습니다. `startedAtIso8601`은 실제 시작 날짜·시각입니다. Almighty는 계획 완료 후 실제 재생 시작 시각으로 갱신합니다.

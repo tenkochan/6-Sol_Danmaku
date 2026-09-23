@@ -144,6 +144,7 @@ public sealed class MainMenu : MonoBehaviour
     {
         answerSelectionAttempted = true;
         AlmightyChallengeExchange.SelectAnswer(answerPathInput.text, out string message);
+        planStatusText.color = Color.white;
         planStatusText.text = message;
     }
 
@@ -248,7 +249,15 @@ public sealed class MainMenu : MonoBehaviour
     {
         if (almightyToggle.isOn && answerSelectionAttempted && !AlmightyChallengeExchange.HasSelectedAnswer)
         {
+            planStatusText.color = new Color(1f, 0.55f, 0.55f);
             planStatusText.text = "Select a valid Answer JSON before starting the external plan.";
+            return;
+        }
+        bool needsJev = !almightyToggle.isOn || !AlmightyChallengeExchange.HasSelectedAnswer;
+        if (needsJev && !JevLocalSettings.TryGetApiKey(out _, out string keyError))
+        {
+            planStatusText.color = new Color(1f, 0.55f, 0.55f);
+            planStatusText.text = keyError;
             return;
         }
         if (!almightyToggle.isOn)

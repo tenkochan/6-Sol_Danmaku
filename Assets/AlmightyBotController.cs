@@ -211,7 +211,9 @@ public sealed class AlmightyBotController : MonoBehaviour
                     }
                     if (request.responseCode < 200 || request.responseCode >= 300)
                         LogHttpFailure(request, key, requestJson, byteCount, step);
-                    Fail($"Almighty Bot Jev request for step {step} failed (HTTP {request.responseCode}).");
+                    Fail(request.responseCode == 401 || request.responseCode == 403
+                        ? $"Jev API authentication failed (HTTP {request.responseCode}). Check the local API key and Jev AI account access."
+                        : $"Almighty Bot Jev request for step {step} failed (HTTP {request.responseCode}).");
                     yield break;
                 }
 
@@ -456,7 +458,7 @@ public sealed class AlmightyBotController : MonoBehaviour
         if (planningErrorText != null && !planReady)
             planningErrorText.text = "PLANNING ERROR";
         Time.timeScale = 1f;
-        health.EndForApiError();
+        health.EndForApiError(reason);
     }
 
     private void CreateStatusOverlay()

@@ -602,7 +602,7 @@ public sealed class JevBotController : MonoBehaviour
         Time.timeScale = 1f;
         if (statusText != null)
             statusText.text = "";
-        health.EndForApiError();
+        health.EndForApiError(message);
     }
 
     private static bool TryReadDirection(string choice, out Vector2 direction)

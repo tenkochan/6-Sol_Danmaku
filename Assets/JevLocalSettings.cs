@@ -12,21 +12,30 @@ public static class JevLocalSettings
 
     public static bool TryGetApiKey(out string apiKey)
     {
+        bool loaded = TryGetApiKey(out apiKey, out string error);
+        if (!loaded)
+            Debug.LogError(error);
+        return loaded;
+    }
+
+    public static bool TryGetApiKey(out string apiKey, out string error)
+    {
         apiKey = null;
+        error = null;
         try
         {
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             string keyPath = Path.Combine(projectRoot, ".secrets", "jev.local.json");
             if (!File.Exists(keyPath))
             {
-                Debug.LogError("Jev API key file is missing. Create .secrets/jev.local.json in the project root.");
+                error = "Jev API Key not found. See README for setup instructions.";
                 return false;
             }
 
             KeyFile file = JsonUtility.FromJson<KeyFile>(File.ReadAllText(keyPath));
             if (file == null || string.IsNullOrWhiteSpace(file.apiKey))
             {
-                Debug.LogError("Jev API key is empty or missing in .secrets/jev.local.json.");
+                error = "Jev API Key is empty or missing in .secrets/jev.local.json. See README for setup instructions.";
                 return false;
             }
 
@@ -35,7 +44,7 @@ public static class JevLocalSettings
         }
         catch (Exception)
         {
-            Debug.LogError("Could not read .secrets/jev.local.json. Check that it contains valid JSON and is readable.");
+            error = "Could not read .secrets/jev.local.json. Check the JSON format and README setup instructions.";
             return false;
         }
     }

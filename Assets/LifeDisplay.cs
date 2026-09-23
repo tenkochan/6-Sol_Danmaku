@@ -11,6 +11,7 @@ public sealed class LifeDisplay : MonoBehaviour
     private BulletSpawner bulletSpawner;
     private UnityEngine.UI.Text bulletCountText;
     private UnityEngine.UI.Text survivalTimeText;
+    private UnityEngine.UI.Text gameOverErrorText;
     private GameObject gameOverPanel;
 
     private void Awake()
@@ -122,6 +123,9 @@ public sealed class LifeDisplay : MonoBehaviour
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         Font buttonFont = Font.CreateDynamicFontFromOSFont("Malgun Gothic", 32);
         CreateText("GAME OVER", gameOverPanel.transform, font, 80, new Vector2(0f, 55f), new Vector2(700f, 120f));
+        gameOverErrorText = CreateText("", gameOverPanel.transform, buttonFont, 28,
+            new Vector2(0f, 155f), new Vector2(1200f, 70f));
+        gameOverErrorText.color = new Color(1f, 0.65f, 0.65f);
 
         GameObject buttonObject = new GameObject("Retry Button", typeof(RectTransform),
             typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
@@ -177,7 +181,11 @@ public sealed class LifeDisplay : MonoBehaviour
         return text;
     }
 
-    public void ShowGameOver() => gameOverPanel.SetActive(true);
+    public void ShowGameOver(string errorMessage = null)
+    {
+        gameOverErrorText.text = errorMessage ?? "";
+        gameOverPanel.SetActive(true);
+    }
 
     private static void Restart()
     {

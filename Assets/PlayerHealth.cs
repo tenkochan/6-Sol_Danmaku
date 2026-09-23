@@ -81,7 +81,7 @@ public sealed class PlayerHealth : MonoBehaviour
         hitProcessing = false;
     }
 
-    public void EndForApiError()
+    public void EndForApiError(string userMessage = null)
     {
         if (CurrentLives == 0)
             return;
@@ -94,7 +94,7 @@ public sealed class PlayerHealth : MonoBehaviour
         LivesChanged?.Invoke(CurrentLives);
         RemainingRespawnTime = 0f;
         DeathPieces.Create(spriteRenderer);
-        FinishGame(false, "JevApiError");
+        FinishGame(false, "JevApiError", userMessage);
     }
 
     public void MarkAlmightyGameplayStarted()
@@ -103,12 +103,12 @@ public sealed class PlayerHealth : MonoBehaviour
             startedAtIso8601 = DateTimeOffset.Now.ToString("o");
     }
 
-    private void FinishGame(bool completedNormally, string endReason)
+    private void FinishGame(bool completedNormally, string endReason, string userMessage = null)
     {
         bulletSpawner.StopSurvivalTimer();
         SaveRecordOnce(completedNormally, endReason);
         spriteRenderer.enabled = false;
-        StartCoroutine(GameOverAfterEffect());
+        StartCoroutine(GameOverAfterEffect(userMessage));
     }
 
     private void SaveRecordOnce(bool completedNormally, string endReason)
@@ -134,11 +134,11 @@ public sealed class PlayerHealth : MonoBehaviour
         });
     }
 
-    private IEnumerator GameOverAfterEffect()
+    private IEnumerator GameOverAfterEffect(string userMessage)
     {
         yield return new WaitForSeconds(DeathPieces.Duration);
         Time.timeScale = 0f;
-        lifeDisplay.ShowGameOver();
+        lifeDisplay.ShowGameOver(userMessage);
     }
 
     private IEnumerator Respawn()
