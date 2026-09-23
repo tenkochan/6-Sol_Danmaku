@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
@@ -8,6 +10,10 @@ public sealed class MainMenu : MonoBehaviour
     private GameObject noticeBubble;
     private CanvasGroup noticeGroup;
     private Coroutine noticeRoutine;
+    private GameObject rankingPanel;
+    private GameObject noRecordsText;
+    private readonly GameObject[] rankingRows = new GameObject[10];
+    private readonly UnityEngine.UI.Text[][] rankingCells = new UnityEngine.UI.Text[10][];
 
     private void Awake()
     {
@@ -23,7 +29,9 @@ public sealed class MainMenu : MonoBehaviour
             new Vector2(0.5f, 0.72f), Vector2.zero, new Vector2(900f, 110f));
         CreateButton("사람 모드", canvasObject.transform, font, new Vector2(0.5f, 0.52f), StartHumanMode);
         CreateButton("봇 모드", canvasObject.transform, font, new Vector2(0.5f, 0.41f), ShowBotNotice);
+        CreateButton("랭킹", canvasObject.transform, font, new Vector2(0.5f, 0.30f), ShowRanking);
         CreateNotice(canvasObject.transform, font);
+        CreateRankingScreen(canvasObject.transform, font);
 
         GameObject eventSystem = new GameObject("Event System", typeof(UnityEngine.EventSystems.EventSystem),
             typeof(InputSystemUIInputModule));
@@ -42,7 +50,7 @@ public sealed class MainMenu : MonoBehaviour
         return rect;
     }
 
-    private static void CreateText(string label, Transform parent, Font font, int size,
+    private static UnityEngine.UI.Text CreateText(string label, Transform parent, Font font, int size,
         Vector2 anchor, Vector2 position, Vector2 dimensions)
     {
         RectTransform rect = CreateRect(label, parent, anchor, position, dimensions);
@@ -53,6 +61,7 @@ public sealed class MainMenu : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.color = Color.white;
         text.raycastTarget = false;
+        return text;
     }
 
     private static void CreateButton(string label, Transform parent, Font font, Vector2 anchor,
@@ -83,6 +92,94 @@ public sealed class MainMenu : MonoBehaviour
         tail.gameObject.AddComponent<UnityEngine.UI.Image>().color = new Color(0.12f, 0.18f, 0.26f);
         noticeBubble.SetActive(false);
     }
+
+    private void CreateRankingScreen(Transform parent, Font font)
+    {
+        RectTransform panel = CreateRect("Ranking Panel", parent, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero);
+        panel.anchorMin = Vector2.zero;
+        panel.anchorMax = Vector2.one;
+        panel.offsetMin = panel.offsetMax = Vector2.zero;
+        rankingPanel = panel.gameObject;
+        panel.gameObject.AddComponent<UnityEngine.UI.Image>().color = new Color(0.04f, 0.08f, 0.14f, 0.98f);
+
+        CreateText("랭킹", panel, font, 60, new Vector2(0.5f, 1f),
+            new Vector2(0f, -100f), new Vector2(500f, 90f));
+        CreateRankingRow(panel, font, 260f, 22, new[]
+        {
+            "순위", "첫 라이프", "두 번째 라이프", "세 번째 라이프", "기록 시점", "모드"
+        });
+
+        for (int i = 0; i < rankingRows.Length; i++)
+        {
+            UnityEngine.UI.Text[] cells = CreateRankingRow(panel, font, 195f - i * 48f, 22,
+                new[] { "", "", "", "", "", "" });
+            rankingCells[i] = cells;
+            rankingRows[i] = cells[0].transform.parent.gameObject;
+            rankingRows[i].SetActive(false);
+        }
+
+        noRecordsText = CreateText("기록이 없습니다.", panel, font, 34,
+            new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(500f, 70f)).gameObject;
+        CreateButton("뒤로", panel, font, new Vector2(0.5f, 0.09f), HideRanking);
+        rankingPanel.SetActive(false);
+    }
+
+    private static UnityEngine.UI.Text[] CreateRankingRow(Transform parent, Font font, float y,
+        int fontSize, string[] values)
+    {
+        RectTransform row = CreateRect("Ranking Row", parent, new Vector2(0.5f, 0.5f),
+            new Vector2(0f, y), new Vector2(1100f, 46f));
+        float[] xPositions = { -500f, -365f, -195f, -25f, 235f, 475f };
+        float[] widths = { 90f, 165f, 165f, 165f, 330f, 140f };
+        UnityEngine.UI.Text[] cells = new UnityEngine.UI.Text[values.Length];
+        for (int i = 0; i < values.Length; i++)
+            cells[i] = CreateText(values[i], row, font, fontSize, new Vector2(0.5f, 0.5f),
+                new Vector2(xPositions[i], 0f), new Vector2(widths[i], 46f));
+        return cells;
+    }
+
+    private void ShowRanking()
+    {
+        List<PlayRecord> records = PlayRecordStore.LoadRecords();
+        records.RemoveAll(record => record == null);
+        records.Sort((left, right) => right.thirdLifeLostSeconds.CompareTo(left.thirdLifeLostSeconds));
+        int shown = Mathf.Min(records.Count, rankingRows.Length);
+        noRecordsText.SetActive(shown == 0);
+
+        for (int i = 0; i < rankingRows.Length; i++)
+        {
+            rankingRows[i].SetActive(i < shown);
+            if (i >= shown)
+                continue;
+
+            PlayRecord record = records[i];
+            string date = DateTimeOffset.TryParse(record.startedAtIso8601, out DateTimeOffset started)
+                ? started.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                : record.startedAtIso8601 ?? "";
+            string[] values =
+            {
+                (i + 1).ToString(),
+                FormatTime(record.firstLifeLostSeconds),
+                FormatTime(record.secondLifeLostSeconds),
+                FormatTime(record.thirdLifeLostSeconds),
+                date,
+                record.mode ?? ""
+            };
+            for (int column = 0; column < values.Length; column++)
+                rankingCells[i][column].text = values[column];
+        }
+
+        rankingPanel.SetActive(true);
+    }
+
+    private static string FormatTime(float seconds)
+    {
+        int tenths = Mathf.FloorToInt(Mathf.Max(0f, seconds) * 10f);
+        return $"{tenths / 600:00}:{tenths / 10 % 60:00}.{tenths % 10}";
+    }
+
+    private void HideRanking() => rankingPanel.SetActive(false);
 
     private static void StartHumanMode() => SceneManager.LoadScene("Main");
 

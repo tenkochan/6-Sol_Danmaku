@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -8,16 +9,24 @@ public sealed class PlayerHealth : MonoBehaviour
     public int CurrentLives { get; private set; } = MaxLives;
     public event System.Action<int> LivesChanged;
 
+    [SerializeField] private PlayMode playMode = PlayMode.Human;
+
     private PlayerMovement movement;
     private SpriteRenderer spriteRenderer;
     private LifeDisplay lifeDisplay;
     private bool respawning;
+    private bool recordSaved;
+    private string startedAtIso8601;
+    private readonly float[] lifeLossTimes = new float[MaxLives];
+    private BulletSpawner bulletSpawner;
 
     private void Awake()
     {
         movement = GetComponent<PlayerMovement>();
         spriteRenderer = GetComponent<SpriteRenderer>();
         lifeDisplay = GetComponent<LifeDisplay>();
+        bulletSpawner = movement.PlayCamera.GetComponent<BulletSpawner>();
+        startedAtIso8601 = DateTimeOffset.Now.ToString("o");
     }
 
     public void TakeHit()
@@ -26,6 +35,7 @@ public sealed class PlayerHealth : MonoBehaviour
             return;
 
         CurrentLives--;
+        lifeLossTimes[MaxLives - CurrentLives - 1] = bulletSpawner.SurvivalTime;
         LivesChanged?.Invoke(CurrentLives);
         movement.CanMove = false;
         respawning = true;
@@ -35,15 +45,32 @@ public sealed class PlayerHealth : MonoBehaviour
             StartCoroutine(Respawn());
         else
         {
+            bulletSpawner.StopSurvivalTimer();
+            SaveRecordOnce();
             spriteRenderer.enabled = false;
             StartCoroutine(GameOverAfterEffect());
         }
     }
 
+    private void SaveRecordOnce()
+    {
+        if (recordSaved)
+            return;
+
+        recordSaved = true;
+        PlayRecordStore.Append(new PlayRecord
+        {
+            firstLifeLostSeconds = lifeLossTimes[0],
+            secondLifeLostSeconds = lifeLossTimes[1],
+            thirdLifeLostSeconds = lifeLossTimes[2],
+            startedAtIso8601 = startedAtIso8601,
+            mode = playMode.ToString()
+        });
+    }
+
     private IEnumerator GameOverAfterEffect()
     {
         yield return new WaitForSeconds(DeathPieces.Duration);
-        movement.PlayCamera.GetComponent<BulletSpawner>().StopSurvivalTimer();
         Time.timeScale = 0f;
         lifeDisplay.ShowGameOver();
     }
