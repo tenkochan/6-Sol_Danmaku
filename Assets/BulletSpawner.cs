@@ -125,4 +125,11 @@ public sealed class BulletSpawner : MonoBehaviour
             CountChanged?.Invoke(bullets.Count);
         }
     }
+
+    public void FillActiveBullets(List<TestBullet> destination)
+    {
+        destination.Clear();
+        foreach (TestBullet bullet in bullets)
+            destination.Add(bullet);
+    }
 }

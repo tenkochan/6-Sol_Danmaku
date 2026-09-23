@@ -2,6 +2,9 @@ using UnityEngine;
 
 public sealed class TestBullet : MonoBehaviour
 {
+    public Vector3 Direction => direction;
+    public float Speed => speed;
+
     private BulletSpawner spawner;
     private Camera playCamera;
     private Vector3 direction;

@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
 
 public static class JevLocalSettings
@@ -41,10 +40,4 @@ public static class JevLocalSettings
         }
     }
 
-    [MenuItem("Tools/Jev/Check Local API Key")]
-    private static void CheckLocalApiKey()
-    {
-        if (TryGetApiKey(out _))
-            Debug.Log("Jev API key is configured locally.");
-    }
 }

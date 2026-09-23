@@ -15,9 +15,12 @@ public sealed class PlayRecord
     public float firstLifeLostSeconds;
     public float secondLifeLostSeconds;
     public float thirdLifeLostSeconds;
+    public float survivalSeconds;
     public int maxActiveBullets;
     public string startedAtIso8601;
     public string mode;
+    public bool completedNormally;
+    public string endReason;
 }
 
 [Serializable]
@@ -71,6 +74,16 @@ public static class PlayRecordStore
             {
                 Debug.LogWarning("Play record file has an invalid format; existing file was left unchanged.");
                 return false;
+            }
+
+            foreach (PlayRecord record in loaded.records)
+            {
+                if (record != null && string.IsNullOrEmpty(record.endReason))
+                {
+                    record.completedNormally = true;
+                    record.endReason = "GameOver";
+                    record.survivalSeconds = record.thirdLifeLostSeconds;
+                }
             }
 
             collection = loaded;

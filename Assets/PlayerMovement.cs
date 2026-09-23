@@ -7,6 +7,8 @@ public sealed class PlayerMovement : MonoBehaviour
     public Camera PlayCamera => playCamera;
     public float NormalSpeed => moveSpeed;
     public float SlowSpeed => moveSpeed * 0.4f;
+    public bool UseBotInput { get; set; }
+    public Vector2 BotDirection { get; set; }
 
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private Camera playCamera;
@@ -22,17 +24,29 @@ public sealed class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        Keyboard keyboard = Keyboard.current;
-        if (keyboard == null || playCamera == null || !CanMove)
+        if (playCamera == null || !CanMove)
             return;
 
-        float x = (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed ? 1f : 0f)
-                - (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed ? 1f : 0f);
-        float y = (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed ? 1f : 0f)
-                - (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
+        Vector2 direction;
+        float speed;
+        if (UseBotInput)
+        {
+            direction = BotDirection.normalized;
+            speed = NormalSpeed;
+        }
+        else
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+                return;
 
-        Vector2 direction = new Vector2(x, y).normalized;
-        float speed = keyboard.leftShiftKey.isPressed ? SlowSpeed : NormalSpeed;
+            float x = (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed ? 1f : 0f)
+                    - (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed ? 1f : 0f);
+            float y = (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed ? 1f : 0f)
+                    - (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
+            direction = new Vector2(x, y).normalized;
+            speed = keyboard.leftShiftKey.isPressed ? SlowSpeed : NormalSpeed;
+        }
         Vector3 position = transform.position + (Vector3)(direction * speed * Time.deltaTime);
 
         Bounds bounds = spriteRenderer.bounds;

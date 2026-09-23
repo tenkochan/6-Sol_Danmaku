@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem.UI;
@@ -7,9 +6,6 @@ using UnityEngine.SceneManagement;
 
 public sealed class MainMenu : MonoBehaviour
 {
-    private GameObject noticeBubble;
-    private CanvasGroup noticeGroup;
-    private Coroutine noticeRoutine;
     private GameObject rankingPanel;
     private GameObject noRecordsText;
     private readonly GameObject[] rankingRows = new GameObject[10];
@@ -28,9 +24,8 @@ public sealed class MainMenu : MonoBehaviour
         CreateText("6 SOL DANMAKU", canvasObject.transform, font, 72,
             new Vector2(0.5f, 0.72f), Vector2.zero, new Vector2(900f, 110f));
         CreateButton("사람 모드", canvasObject.transform, font, new Vector2(0.5f, 0.52f), StartHumanMode);
-        CreateButton("봇 모드", canvasObject.transform, font, new Vector2(0.5f, 0.41f), ShowBotNotice);
+        CreateButton("봇 모드", canvasObject.transform, font, new Vector2(0.5f, 0.41f), StartBotMode);
         CreateButton("랭킹", canvasObject.transform, font, new Vector2(0.5f, 0.30f), ShowRanking);
-        CreateNotice(canvasObject.transform, font);
         CreateRankingScreen(canvasObject.transform, font);
 
         GameObject eventSystem = new GameObject("Event System", typeof(UnityEngine.EventSystems.EventSystem),
@@ -74,23 +69,6 @@ public sealed class MainMenu : MonoBehaviour
         button.onClick.AddListener(action);
         CreateText(label, rect, font, 36, new Vector2(0.5f, 0.5f), Vector2.zero,
             new Vector2(340f, 82f));
-    }
-
-    private void CreateNotice(Transform parent, Font font)
-    {
-        RectTransform rect = CreateRect("Bot Notice", parent, new Vector2(0.5f, 0f),
-            new Vector2(0f, 100f), new Vector2(320f, 72f));
-        noticeBubble = rect.gameObject;
-        rect.gameObject.AddComponent<UnityEngine.UI.Image>().color = new Color(0.12f, 0.18f, 0.26f);
-        noticeGroup = rect.gameObject.AddComponent<CanvasGroup>();
-        CreateText("개발 중입니다.", rect, font, 28, new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(300f, 68f));
-
-        RectTransform tail = CreateRect("Bubble Tail", rect, new Vector2(0.5f, 0f),
-            new Vector2(0f, -9f), new Vector2(20f, 20f));
-        tail.localRotation = Quaternion.Euler(0f, 0f, 45f);
-        tail.gameObject.AddComponent<UnityEngine.UI.Image>().color = new Color(0.12f, 0.18f, 0.26f);
-        noticeBubble.SetActive(false);
     }
 
     private void CreateRankingScreen(Transform parent, Font font)
@@ -142,7 +120,7 @@ public sealed class MainMenu : MonoBehaviour
     private void ShowRanking()
     {
         List<PlayRecord> records = PlayRecordStore.LoadRecords();
-        records.RemoveAll(record => record == null);
+        records.RemoveAll(record => record == null || !record.completedNormally);
         records.Sort((left, right) => right.thirdLifeLostSeconds.CompareTo(left.thirdLifeLostSeconds));
         int shown = Mathf.Min(records.Count, rankingRows.Length);
         noRecordsText.SetActive(shown == 0);
@@ -182,30 +160,15 @@ public sealed class MainMenu : MonoBehaviour
 
     private void HideRanking() => rankingPanel.SetActive(false);
 
-    private static void StartHumanMode() => SceneManager.LoadScene("Main");
-
-    private void ShowBotNotice()
+    private static void StartHumanMode()
     {
-        if (noticeRoutine != null)
-            StopCoroutine(noticeRoutine);
-        noticeBubble.SetActive(true);
-        noticeGroup.alpha = 1f;
-        noticeRoutine = StartCoroutine(HideNotice());
+        PlayerHealth.SelectedMode = PlayMode.Human;
+        SceneManager.LoadScene("Main");
     }
 
-    private IEnumerator HideNotice()
+    private static void StartBotMode()
     {
-        yield return new WaitForSecondsRealtime(2f);
-        const float fadeDuration = 0.5f;
-        float elapsed = 0f;
-        while (elapsed < fadeDuration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            noticeGroup.alpha = 1f - Mathf.Clamp01(elapsed / fadeDuration);
-            yield return null;
-        }
-
-        noticeBubble.SetActive(false);
-        noticeRoutine = null;
+        PlayerHealth.SelectedMode = PlayMode.Bot;
+        SceneManager.LoadScene("Main");
     }
 }

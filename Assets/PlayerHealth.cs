@@ -6,6 +6,8 @@ using UnityEngine;
 public sealed class PlayerHealth : MonoBehaviour
 {
     public const int MaxLives = 3;
+    public static PlayMode SelectedMode { get; set; } = PlayMode.Human;
+    public PlayMode Mode => playMode;
     public int CurrentLives { get; private set; } = MaxLives;
     public event System.Action<int> LivesChanged;
 
@@ -17,8 +19,11 @@ public sealed class PlayerHealth : MonoBehaviour
     private bool respawning;
     private bool recordSaved;
     private string startedAtIso8601;
-    private readonly float[] lifeLossTimes = new float[MaxLives];
+    private readonly float[] lifeLossTimes = { -1f, -1f, -1f };
     private BulletSpawner bulletSpawner;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetSelectedMode() => SelectedMode = PlayMode.Human;
 
     private void Awake()
     {
@@ -26,6 +31,7 @@ public sealed class PlayerHealth : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
         lifeDisplay = GetComponent<LifeDisplay>();
         bulletSpawner = movement.PlayCamera.GetComponent<BulletSpawner>();
+        playMode = SelectedMode;
         startedAtIso8601 = DateTimeOffset.Now.ToString("o");
     }
 
@@ -44,15 +50,32 @@ public sealed class PlayerHealth : MonoBehaviour
         if (CurrentLives > 0)
             StartCoroutine(Respawn());
         else
-        {
-            bulletSpawner.StopSurvivalTimer();
-            SaveRecordOnce();
-            spriteRenderer.enabled = false;
-            StartCoroutine(GameOverAfterEffect());
-        }
+            FinishGame(true, "GameOver");
     }
 
-    private void SaveRecordOnce()
+    public void EndForApiError()
+    {
+        if (CurrentLives == 0)
+            return;
+
+        StopAllCoroutines();
+        CurrentLives = 0;
+        LivesChanged?.Invoke(CurrentLives);
+        movement.CanMove = false;
+        respawning = true;
+        DeathPieces.Create(spriteRenderer);
+        FinishGame(false, "JevApiError");
+    }
+
+    private void FinishGame(bool completedNormally, string endReason)
+    {
+        bulletSpawner.StopSurvivalTimer();
+        SaveRecordOnce(completedNormally, endReason);
+        spriteRenderer.enabled = false;
+        StartCoroutine(GameOverAfterEffect());
+    }
+
+    private void SaveRecordOnce(bool completedNormally, string endReason)
     {
         if (recordSaved)
             return;
@@ -63,9 +86,12 @@ public sealed class PlayerHealth : MonoBehaviour
             firstLifeLostSeconds = lifeLossTimes[0],
             secondLifeLostSeconds = lifeLossTimes[1],
             thirdLifeLostSeconds = lifeLossTimes[2],
+            survivalSeconds = bulletSpawner.SurvivalTime,
             maxActiveBullets = bulletSpawner.MaxActiveBullets,
             startedAtIso8601 = startedAtIso8601,
-            mode = playMode.ToString()
+            mode = playMode.ToString(),
+            completedNormally = completedNormally,
+            endReason = endReason
         });
     }
 
