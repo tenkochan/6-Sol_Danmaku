@@ -120,6 +120,7 @@ public sealed class LifeDisplay : MonoBehaviour
         panelImage.color = new Color(0.08f, 0f, 0f, 0.85f);
 
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        Font buttonFont = Font.CreateDynamicFontFromOSFont("Malgun Gothic", 32);
         CreateText("GAME OVER", gameOverPanel.transform, font, 80, new Vector2(0f, 55f), new Vector2(700f, 120f));
 
         GameObject buttonObject = new GameObject("Retry Button", typeof(RectTransform),
@@ -131,7 +132,18 @@ public sealed class LifeDisplay : MonoBehaviour
         buttonRect.anchoredPosition = new Vector2(0f, -70f);
         buttonObject.GetComponent<UnityEngine.UI.Image>().color = new Color(0.55f, 0.12f, 0.12f);
         buttonObject.GetComponent<UnityEngine.UI.Button>().onClick.AddListener(Restart);
-        CreateText("다시 하기", buttonObject.transform, font, 32, Vector2.zero, Vector2.zero);
+        CreateText("다시 하기", buttonObject.transform, buttonFont, 32, Vector2.zero, Vector2.zero);
+
+        GameObject titleButton = new GameObject("Title Button", typeof(RectTransform),
+            typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
+        titleButton.transform.SetParent(gameOverPanel.transform, false);
+        RectTransform titleRect = titleButton.GetComponent<RectTransform>();
+        titleRect.anchorMin = titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(240f, 72f);
+        titleRect.anchoredPosition = new Vector2(0f, -160f);
+        titleButton.GetComponent<UnityEngine.UI.Image>().color = new Color(0.55f, 0.12f, 0.12f);
+        titleButton.GetComponent<UnityEngine.UI.Button>().onClick.AddListener(GoToTitle);
+        CreateText("타이틀로 이동", titleButton.transform, buttonFont, 28, Vector2.zero, Vector2.zero);
 
         GameObject eventSystem = new GameObject("Event System", typeof(UnityEngine.EventSystems.EventSystem),
             typeof(InputSystemUIInputModule));
@@ -171,5 +183,11 @@ public sealed class LifeDisplay : MonoBehaviour
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    private static void GoToTitle()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("MainMenu");
     }
 }
